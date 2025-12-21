@@ -1,0 +1,19 @@
+# 忽略所有权重文件
+*.pth
+*.tar
+
+# 忽略数据集文件夹
+datasets/
+VOCdevkit/
+
+# 忽略Python编译缓存和日志
+__pycache__/
+*.log
+output/
+
+# 忽略虚拟环境
+venv/
+.ipynb_checkpoints/
+
+# 忽略系统文件
+.DS_Store
