@@ -3,15 +3,38 @@ import torch.nn.functional as F
 import csv
 import os
 from natsort import natsorted # 推荐使用自然排序
-from models.model import get_vgg16_classifier
 from dataloader import get_data_loaders
 
+from models.model import get_vgg16_classifier
+from models.model import get_resnet50_classifier
+from models.model import VGG_ResNet_Fusion
+"""
+resnet 0.9890
+vgg16 0.9908
+fusion 0.9926
+
+
+"""
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def predict_to_csv():
+def predict_to_csv(model_type='vgg'):
     # 1. 加载模型
-    model = get_vgg16_classifier(num_classes=2)
-    model.load_state_dict(torch.load('./models/vgg16_cats_dogs-best.pth'))
+    #model = get_vgg16_classifier(num_classes=2)
+    #model.load_state_dict(torch.load('./vgg16_cats_dogs-vgg-best.pth'))
+    #model.load_state_dict(torch.load('./models/vgg16_cats_dogs-resnet-best.pth'))
+    #model.load_state_dict(torch.load('./fusion_best_99.pth'))
+    
+    if model_type == 'vgg':
+        model = get_vgg16_classifier(num_classes=2, use_pretrained=False)
+        weight_path = './vgg16_cats_dogs-vgg-best.pth'
+    elif model_type == 'resnet':
+        model = get_resnet50_classifier(num_classes=2, use_pretrained=False)
+        weight_path = './vgg16_cats_dogs-resnet-best.pth'
+    elif model_type == 'fusion':
+        model = VGG_ResNet_Fusion(num_classes=2, pretrained=False)
+        weight_path = './fusion_best_99.pth'
+    
+    model.load_state_dict(torch.load(weight_path, map_location=DEVICE))
     model = model.to(DEVICE)
     model.eval()
 
@@ -44,7 +67,13 @@ def predict_to_csv():
     results = natsorted(results, key=lambda x: x[0])
 
     # 4. 写入 CSV
-    csv_path = 'classification_probs.csv'
+    if model_type == 'vgg':
+        csv_path = 'classification_probs-vgg.csv'
+    elif model_type == 'resnet':
+        csv_path = 'classification_probs-resnet.csv'
+    else:
+        csv_path = 'classification_probs-fusion.csv'
+        
     with open(csv_path, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['id', 'label']) # label 处现在是概率值
@@ -53,4 +82,4 @@ def predict_to_csv():
     print(f"推理完成！结果已保存至: {csv_path}")
 
 if __name__ == '__main__':
-    predict_to_csv()
+    predict_to_csv(model_type='fusion')  # 可选 'vgg', 'resnet', 'fusion'
