@@ -1,51 +1,79 @@
+#我们将测试集逻辑加入，并增加一个专门用于单张图片推理的转换（无需随机增强）。
 import os
-import torch
-import numpy as np
 from PIL import Image
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
-import torchvision.transforms.functional as TF
+import random
+from natsort import natsorted
+import csv
 
-class VOCSegmentationDataset(Dataset):
-    def __init__(self, root_dir, split='train', size=(224, 224)):
+class CatDogDataset(Dataset):
+    def __init__(self, root_dir, image_files,transform=None, is_test=False):
         self.root_dir = root_dir
-        self.size = size
-        # 根据 train.txt 或 val.txt 读取文件名
-        txt_path = os.path.join(root_dir, 'ImageSets/Segmentation', f'{split}.txt')
-        with open(txt_path, 'r') as f:
-            self.images = [line.strip() for line in f]
-
+        self.transform = transform
+        self.is_test = is_test
+        # 列表推导式, 读取目录下所有图片,把所有以 .jpg 结尾的文件名挑出来，组成一个新的列表
+        #self.images = [f for f in os.listdir(root_dir) if f.endswith('.jpg')]
+        #self.images = sorted(image_files)  # 这里传进来的是图片文件名列表
+        #sorted 这里保证test输出的顺序性，可能导致读取的慢记得改回来
+        
+        self.images = natsorted(image_files)
+        
+        
+        
     def __len__(self):
         return len(self.images)
 
     def __getitem__(self, idx):
         img_name = self.images[idx]
-        img_path = os.path.join(self.root_dir, 'JPEGImages', img_name + '.jpg')
-        mask_path = os.path.join(self.root_dir, 'SegmentationClass', img_name + '.png')
-
+        img_path = os.path.join(self.root_dir, img_name)
         image = Image.open(img_path).convert('RGB')
-        mask = Image.open(mask_path) # 保持索引模式
 
-        # --- 同步数据增强 ---
-        # 1. 统一缩放
-        image = TF.resize(image, self.size)
-        mask = TF.resize(mask, self.size, interpolation=TF.InterpolationMode.NEAREST)
+        if self.transform:
+            image = self.transform(image)
 
-        # 2. 转换为 Tensor
-        image = TF.to_tensor(image)
-        image = TF.normalize(image, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        
-        # Mask 转换为 LongTensor，且像素值 255 保持不变供 Loss 忽略
-        mask = torch.from_numpy(np.array(mask)).long()
-        
-        return image, mask
+        if self.is_test:
+            # test 文件夹没有标签，直接返回文件名
+            return image, img_name
+        else:
+            # train 文件夹解析文件名获取标签
+            # cat.0.jpg -> 0 (Cat), dog.0.jpg -> 1 (Dog)
+            label = 1 if 'dog' in img_name.lower() else 0
+            return image, label
 
-def get_voc_loaders(data_dir, batch_size=32):
-    train_ds = VOCSegmentationDataset(data_dir, split='train')
-    val_ds = VOCSegmentationDataset(data_dir, split='val')
+
+def get_data_loaders(data_dir, batch_size=64,val_split=0.2):
+    norm_params = {"mean": [0.485, 0.456, 0.406], "std": [0.229, 0.224, 0.225]}
+
+    train_transform = transforms.Compose([transforms.RandomResizedCrop(224),transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),transforms.Normalize(**norm_params)
+    ])
+
+    val_transform = transforms.Compose([
+        transforms.Resize(256),transforms.CenterCrop(224),transforms.ToTensor(),transforms.Normalize(**norm_params)
+    ])
     
-    # 针对你的 4090 服务器，建议加大 num_workers
-    train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, num_workers=8)
-    val_loader = DataLoader(val_ds, batch_size=batch_size, shuffle=False, num_workers=8)
     
-    return train_loader, val_loader
+    # 1. 获取 train 目录下所有图片并打乱
+    train_path = os.path.join(data_dir, 'train')
+    all_train_files = [f for f in os.listdir(train_path) if f.endswith('.jpg')]
+    random.seed(42) # 固定随机种子保证结果可复现
+    random.shuffle(all_train_files)
+    # 2. 计算切分点
+    split = int(len(all_train_files) * (1 - val_split))
+    train_files = all_train_files[:split]
+    val_files = all_train_files[split:]
+    # 3. 创建带标签的训练集和验证集
+    train_dataset = CatDogDataset(train_path, train_files, transform=train_transform, is_test=False)
+    val_dataset = CatDogDataset(train_path, val_files, transform=val_transform, is_test=False)
+    # 4. 创建无标签的测试集
+    test_path = os.path.join(data_dir, 'test')
+    test_files = [f for f in os.listdir(test_path) if f.endswith('.jpg')]
+    test_dataset = CatDogDataset(test_path, test_files, transform=val_transform, is_test=True)
+
+    # 返回三个 Loader
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=8)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=8)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=8)
+
+    return train_loader, val_loader, test_loader

@@ -1,21 +1,20 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from model import get_vgg16_classifier
+from models.model import get_vgg16_classifier
 from dataloader import get_data_loaders
 from others.plot import plot_training_history
 import torch.nn as nn
-from model import VGG16_UNet 
+from models.model import get_vgg16_classifier 
 
 
 
-NUM_CLASSES = 21 # VOC2012 包含背景共 21 类
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 # 超参数
-DATA_DIR = './datasets/cat_dog'
-BATCH_SIZE = 128
+DATA_DIR = '/public/home/liuquanlong_gsc/Datasets/Dogvscat/'
+BATCH_SIZE = 64
+EPOCHS = 100
 LR = 1e-5
-EPOCHS = 30
 PATIENCE = 5
 counter = 0
 best_val_loss = float('inf') # 记录目前见过的最低验证损失

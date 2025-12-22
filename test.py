@@ -1,32 +1,56 @@
 import torch
-from model import get_vgg16_classifier
+import torch.nn.functional as F
+import csv
+import os
+from natsort import natsorted # 推荐使用自然排序
+from models.model import get_vgg16_classifier
 from dataloader import get_data_loaders
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-
-def predict_test_folder():
+def predict_to_csv():
     # 1. 加载模型
     model = get_vgg16_classifier(num_classes=2)
-    model.load_state_dict(torch.load('vgg16_cats_dogs.pth'))
+    model.load_state_dict(torch.load('./models/vgg16_cats_dogs-best.pth'))
     model = model.to(DEVICE)
     model.eval()
 
-    # 2. 加载无标签测试集
-    _, test_loader = get_data_loaders('./datasets/cat_dog')
+    # 2. 加载测试集 (确保 shuffle=False)
+    _, _, test_loader = get_data_loaders('/public/home/liuquanlong_gsc/Datasets/Dogvscat/', batch_size=1)
 
-    classes = ['Cat', 'Dog']
-    print("开始推理测试集...")
+    results = []
+    print("开始推理并计算概率值...")
 
     with torch.no_grad():
         for inputs, img_names in test_loader:
             inputs = inputs.to(DEVICE)
-            outputs = model(inputs)
-            _, preds = torch.max(outputs, 1)
+            outputs = model(inputs) # 得到的是原始 Logits
+            
+            # --- 关键修改：计算概率 ---
+            # 使用 Softmax 将 Logits 转换为概率
+            # 公式: $$P(x_i) = \frac{e^{x_i}}{\sum e^{x_j}}$$
+            probabilities = F.softmax(outputs, dim=1)
+            
+            # 获取预测类别的概率值和索引
+            prob_values, preds = torch.max(probabilities, 1)
 
             for i in range(len(img_names)):
-                print(f"文件: {img_names[i]} -> 预测结果: {classes[preds[i].item()]}")
+                filename = img_names[i]
+                # 获取该预测类别的具体概率（置信度）
+                conf_score = prob_values[i].item() 
+                results.append([filename, f"{conf_score:.4f}"]) # 保留 4 位小数
 
+    # 3. 排序 (解决 1, 10, 100 顺序问题)
+    results = natsorted(results, key=lambda x: x[0])
+
+    # 4. 写入 CSV
+    csv_path = 'classification_probs.csv'
+    with open(csv_path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['id', 'label']) # label 处现在是概率值
+        writer.writerows(results)
+
+    print(f"推理完成！结果已保存至: {csv_path}")
 
 if __name__ == '__main__':
-    predict_test_folder()
+    predict_to_csv()
