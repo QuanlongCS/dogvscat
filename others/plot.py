@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt # 必须导入用于绘图
 
-def plot_training_history(history):
+def plot_training_history(history,name):
     """绘制训练记录图表"""
     epochs = range(len(history['train_loss']))
     
@@ -25,6 +25,6 @@ def plot_training_history(history):
     plt.legend()
 
     plt.tight_layout()
-    plt.savefig('training_curves.png') # 自动保存图片到当前目录
+    plt.savefig(f'{name}.png') # 自动保存图片到当前目录
     
     #plt.show()

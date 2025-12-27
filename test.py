@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import csv
 import os
 from natsort import natsorted # 推荐使用自然排序
-from dataloader import get_data_loaders
+from others.dataloader import get_data_loaders
 
 from models.model import get_vgg16_classifier
 from models.model import get_resnet50_classifier
@@ -19,20 +19,16 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def predict_to_csv(model_type='vgg'):
     # 1. 加载模型
-    #model = get_vgg16_classifier(num_classes=2)
-    #model.load_state_dict(torch.load('./vgg16_cats_dogs-vgg-best.pth'))
-    #model.load_state_dict(torch.load('./models/vgg16_cats_dogs-resnet-best.pth'))
-    #model.load_state_dict(torch.load('./fusion_best_99.pth'))
-    
+
     if model_type == 'vgg':
         model = get_vgg16_classifier(num_classes=2, use_pretrained=False)
-        weight_path = './vgg16_cats_dogs-vgg-best.pth'
+        weight_path = './models/best-model/best-vgg-0.9916.pth'
     elif model_type == 'resnet':
         model = get_resnet50_classifier(num_classes=2, use_pretrained=False)
-        weight_path = './vgg16_cats_dogs-resnet-best.pth'
+        weight_path = './models/best-model/best-resnet-0.9934.pth'
     elif model_type == 'fusion':
-        model = VGG_ResNet_Fusion(num_classes=2, pretrained=False)
-        weight_path = './fusion_best_99.pth'
+        model = VGG_ResNet_Fusion(num_classes=2, vgg_path='./models/best-model/best-vgg-0.9916.pth', resnet_path='./models/best-model/best-resnet-0.9934.pth')
+        weight_path = './models/best-model/best-fusion-0.9944.pth'
     
     model.load_state_dict(torch.load(weight_path, map_location=DEVICE))
     model = model.to(DEVICE)
@@ -53,16 +49,18 @@ def predict_to_csv(model_type='vgg'):
             # 使用 Softmax 将 Logits 转换为概率
             # 公式: $$P(x_i) = \frac{e^{x_i}}{\sum e^{x_j}}$$
             probabilities = F.softmax(outputs, dim=1)
-            
+            dog_probs = probabilities[:, 1]
             # 获取预测类别的概率值和索引
-            prob_values, preds = torch.max(probabilities, 1)
+            #prob_values, preds = torch.max(probabilities, 1)
 
             for i in range(len(img_names)):
                 filename = img_names[i]
-                # 获取该预测类别的具体概率（置信度）
-                conf_score = prob_values[i].item() 
-                results.append([filename, f"{conf_score:.4f}"]) # 保留 4 位小数
-
+            # 这里的 filename 可能是 '123.jpg'，Kaggle 有时只需要 '123'
+            # 建议根据 Kaggle 要求处理文件名
+                img_id = filename.split('.')[0] 
+            
+                conf_score = dog_probs[i].item()
+                results.append([img_id, f"{conf_score:.4f}"])
     # 3. 排序 (解决 1, 10, 100 顺序问题)
     results = natsorted(results, key=lambda x: x[0])
 
@@ -82,4 +80,4 @@ def predict_to_csv(model_type='vgg'):
     print(f"推理完成！结果已保存至: {csv_path}")
 
 if __name__ == '__main__':
-    predict_to_csv(model_type='fusion')  # 可选 'vgg', 'resnet', 'fusion'
+    predict_to_csv(model_type='vgg')  # 可选 'vgg', 'resnet', 'fusion'

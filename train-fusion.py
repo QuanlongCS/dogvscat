@@ -2,39 +2,40 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.optim import lr_scheduler
-from models.model_fusion import VGG_ResNet_Fusion
-from dataloader import get_data_loaders
+from models.model import VGG_ResNet_Fusion
+from others.dataloader import get_data_loaders
 from others.plot import plot_training_history
+
+
+RES_BEST = '.models/best-model/best-resnet-0.9934.pth'
+VGG_BEST = '.models/best-model/best-vgg-0.9916.pth'
+
 
 # --- 超参数配置 ---
 DATA_DIR = '/public/home/liuquanlong_gsc/Datasets/Dogvscat/'
-BATCH_SIZE = 64  # 融合模型较大，建议调小 Batch 避免 OOM
-EPOCHS = 100
-LR_HEAD = 1e-4   # 分类头的学习率
-LR_BACKBONE = 1e-6 # 预训练层的微调学习率
-PATIENCE = 7     # 早停耐心值
+BATCH_SIZE = 128  # 融合模型较大，建议调小 Batch 避免 OOM
+EPOCHS = 50
+LR = 1e-4   # 分类头的学习率
+LR_HEAD = 1e-4
+LR_BACKBONE = 1e-6
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def train_fusion():
     train_loader, val_loader, _ = get_data_loaders(DATA_DIR, BATCH_SIZE)
-    
+    model = VGG_ResNet_Fusion(num_classes=2, vgg_path=VGG_BEST, resnet_path=RES_BEST).to(DEVICE)
     # 1. 初始化融合模型
-    model = VGG_ResNet_Fusion(num_classes=2).to(DEVICE)
-    
-    # 2. 差异化微调策略：解冻 VGG 的最后 3 层和 ResNet 的最后 2 个残差块
-    for param in model.vgg_features[24:].parameters(): param.requires_grad = True
-    for param in list(model.resnet_features.parameters())[-20:]: param.requires_grad = True
 
-    # 3. 优化器：为不同层设置不同的学习率（冲 99% 的关键）
     optimizer = optim.Adam([
         {'params': model.vgg_features.parameters(), 'lr': LR_BACKBONE},
         {'params': model.resnet_features.parameters(), 'lr': LR_BACKBONE},
         {'params': model.classifier.parameters(), 'lr': LR_HEAD}
     ])
-
-    # 4. 动态学习率调度器
-    scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=3)
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1) # 增加标签平滑防止过拟合
+    
+        
+        
+    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.2, patience=3)
     
     history = {'train_loss': [], 'train_acc': [], 'val_loss': [], 'val_acc': []}
     best_acc = 0.0
@@ -69,32 +70,32 @@ def train_fusion():
                 val_corrects += torch.sum(preds == labels.data)
 
         # 计算指标
-        train_l = running_loss / len(train_loader.dataset)
+        train_loss = running_loss / len(train_loader.dataset)
         #train_a = running_corrects.double() / len(train_loader.dataset)
-        val_l = val_loss / len(val_loader.dataset)
-        val_a = val_corrects.double() / len(val_loader.dataset)
+        val_loss = val_loss / len(val_loader.dataset)
+        val_acc = val_corrects.double() / len(val_loader.dataset)
 
-        print(f'Epoch {epoch}/{EPOCHS} Train Loss: {train_l:.4f} | Val Acc: {val_a:.4f}')
+        print(f'Epoch {epoch}/{EPOCHS} Train Loss: {train_loss:.4f} | Val Acc: {val_acc:.4f}')
         
-        scheduler.step(val_l) # 更新学习率
-        history['train_loss'].append(train_l)
-        #history['train_acc'].append(train_a.item())
-        #history['val_loss'].append(val_l)
-        history['val_acc'].append(val_a.item())
-
+        
+        history['train_loss'].append(train_loss)
+        #history['train_acc'].append(train_acc.item())
+        #history['val_loss'].append(val_loss)
+        history['val_acc'].append(val_acc.item())
+        
+        scheduler.step(val_loss)
+        
+        
         # --- 最优保存与早停 ---
-        if val_a > best_acc:
-            best_acc = val_a
-            torch.save(model.state_dict(), 'fusion_best_99.pth')
+        if val_acc > best_acc:
+            best_acc = val_acc
+            torch.save(model.state_dict(), f'./pths/best-fusion-{best_acc:.4f}.pth')
             print(f"精度突破！已保存: {best_acc:.4f}")
-            early_stop_counter = 0
-        else:
-            early_stop_counter += 1
+
+
         
-        if early_stop_counter >= PATIENCE:
-            print("模型已收敛，触发早停。")
-            break
-    plot_training_history(history)
+
+    plot_training_history(history,"fusion_training_curves")
 
 if __name__ == '__main__':
     train_fusion()
