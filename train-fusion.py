@@ -13,7 +13,7 @@ VGG_BEST = '.models/best-model/best-vgg-0.9916.pth'
 
 # --- 超参数配置 ---
 DATA_DIR = '/public/home/liuquanlong_gsc/Datasets/Dogvscat/'
-BATCH_SIZE = 128  # 融合模型较大，建议调小 Batch 避免 OOM
+BATCH_SIZE = 32  # 融合模型较大，建议调小 Batch 避免 OOM
 EPOCHS = 50
 LR = 1e-4   # 分类头的学习率
 LR_HEAD = 1e-4
@@ -45,7 +45,7 @@ def train_fusion():
         # --- 训练阶段 ---
         model.train()
         running_loss, running_corrects = 0.0, 0
-        for inputs, labels in train_loader:
+        for inputs, labels,_ in train_loader:
             inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
             optimizer.zero_grad()
             outputs = model(inputs)
@@ -61,7 +61,7 @@ def train_fusion():
         model.eval()
         val_loss, val_corrects = 0.0, 0
         with torch.no_grad():
-            for inputs, labels in val_loader:
+            for inputs, labels,_ in val_loader:
                 inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
                 outputs = model(inputs)
                 loss = criterion(outputs, labels)

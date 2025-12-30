@@ -13,10 +13,10 @@ from torch.optim import lr_scheduler # 引入调度器
 # 超参数
 DATA_DIR = '/public/home/liuquanlong_gsc/Datasets/Dogvscat/'
 BATCH_SIZE = 128
-EPOCHS = 100
+EPOCHS = 50
 LR = 1e-4
 
-PATIENCE = 10
+PATIENCE = 7
 counter = 0
 best_val_loss = float('inf') # 记录目前见过的最低验证损失
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -37,6 +37,7 @@ def train_model():
 # 1. 动态获取所有需要更新（未冻结）的参数
     params_to_update = [p for p in model.parameters() if p.requires_grad]
     optimizer = optim.Adam(params_to_update, lr=LR)
+    #check out which parameters are being optimized
     # 健壮性检查：确保有参数可练
     if len(params_to_update) == 0:
         raise ValueError("错误：没有任何参数被解冻！请检查你的 feature_extract 逻辑。")
@@ -59,7 +60,7 @@ def train_model():
         model.train()
         running_loss, running_corrects = 0.0, 0
 
-        for inputs, labels in train_loader:
+        for inputs, labels,_ in train_loader:
             inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
             optimizer.zero_grad()
 
@@ -77,7 +78,7 @@ def train_model():
         val_loss, val_corrects = 0.0, 0
         
         with torch.no_grad(): # 验证时不计算梯度
-            for inputs, labels in val_loader:
+            for inputs, labels,_ in val_loader:
                 inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
                 outputs = model(inputs)
                 _, preds = torch.max(outputs, 1)

@@ -39,7 +39,7 @@ class CatDogDataset(Dataset):
             # train 文件夹解析文件名获取标签
             # cat.0.jpg -> 0 (Cat), dog.0.jpg -> 1 (Dog)
             label = 1 if 'dog' in img_name.lower() else 0
-            return image, label
+            return image, label, img_name
 
 
 def get_data_loaders(data_dir, batch_size=64,val_split=0.2):

@@ -9,10 +9,10 @@ from others.plot import plot_training_history
 # --- 实验配置（保持与 VGG 实验一致以保证公平对比） ---
 DATA_DIR = '/public/home/liuquanlong_gsc/Datasets/Dogvscat/'
 BATCH_SIZE = 128
-EPOCHS = 100
+EPOCHS = 50
 LR = 1e-4
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-PATIENCE = 10
+PATIENCE = 15
 counter = 0
 best_val_loss = float('inf') # 记录目前见过的最低验证损失
 
@@ -43,7 +43,7 @@ def train_resnet_baseline():
         # 训练循环
         model.train()
         running_loss, running_acc = 0.0, 0
-        for inputs, labels in train_loader:
+        for inputs, labels,_ in train_loader:
             inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
             optimizer.zero_grad()
             outputs = model(inputs)
@@ -59,7 +59,7 @@ def train_resnet_baseline():
         model.eval()
         val_l, val_a = 0.0, 0
         with torch.no_grad():
-            for inputs, labels in val_loader:
+            for inputs, labels,_ in val_loader:
                 inputs, labels = inputs.to(DEVICE), labels.to(DEVICE)
                 outputs = model(inputs)
                 _, preds = torch.max(outputs, 1)
